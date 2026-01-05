@@ -4,3 +4,7 @@ pandas
 numpy
 altair
 streamlit
+rdkit-pypi
+stmol
+py3Dmol
+scikit-learn

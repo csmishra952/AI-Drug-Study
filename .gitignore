@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+*.pt
+*.pth
+
+esol/processed/*.pt
+*.csv  # Optional: exclude unless needed
+
+.vscode/
+.idea/
+*.swp
+
+.DS_Store
+Thumbs.db
