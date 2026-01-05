@@ -7,5 +7,4 @@ streamlit
 rdkit
 stmol
 py3Dmol
-
 scikit-learn
