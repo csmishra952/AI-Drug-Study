@@ -3,13 +3,7 @@ torch-geometric
 pandas
 numpy
 altair
-<<<<<<< HEAD
 streamlit>=1.28.0
 rdkit
-=======
-streamlit
-rdkit
-stmol
->>>>>>> 80ee9e2a43081a19b12589b0b2f515511829b6cf
 py3Dmol
 scikit-learn
