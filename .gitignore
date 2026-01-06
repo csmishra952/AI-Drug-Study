@@ -5,17 +5,13 @@ __pycache__/
 .Python
 venv/
 env/
-ENV/
 
-*.pt
-*.pth
+wandb/
+*.log
 
-esol/processed/*.pt
-*.csv  # Optional: exclude unless needed
+!checkpoints/*.ckpt
+
+esol/processed/
 
 .vscode/
 .idea/
-*.swp
-
-.DS_Store
-Thumbs.db

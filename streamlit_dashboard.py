@@ -1,328 +1,180 @@
 import streamlit as st
 import pandas as pd
 import torch
-import altair as alt
+import glob
 import os
-from model import GNN
-from utils import smiles_to_graph, get_3d_block
-import py3Dmol
+import numpy as np
+from model_pl import DrugDiscoveryModel
+from utils import smiles_to_graph, get_colored_3d_block, get_molecule_explanation
+import streamlit.components.v1 as components
 st.set_page_config(
-    page_title="AI Drug Discovery",
+    page_title="AI Drug Discovery Pro",
     layout="wide",
     initial_sidebar_state="expanded",
-    menu_items={"About": "AI Drug Discovery using Graph Neural Networks"}
+    page_icon="🧬"
 )
-
 st.markdown("""
     <style>
-    /* Main background */
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 20px;
-    }
-    
-    /* Header styling */
-    .header-title {
-        text-align: center;
-        color: white;
-        font-size: 2.5em;
-        font-weight: bold;
-        margin-bottom: 10px;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    
-    .header-subtitle {
-        text-align: center;
-        color: rgba(255,255,255,0.9);
-        font-size: 1.1em;
-        margin-bottom: 30px;
-    }
-    
-    /* Card styling */
-    .card {
-        background: white;
-        border-radius: 12px;
-        padding: 25px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        margin-bottom: 20px;
-    }
-    
-    .card-title {
-        font-size: 1.4em;
-        font-weight: bold;
-        color: #667eea;
-        margin-bottom: 15px;
-        border-left: 4px solid #667eea;
-        padding-left: 10px;
-    }
-    
-    /* Button styling */
-    .stButton > button {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 12px 30px;
-        font-weight: bold;
-        transition: transform 0.2s;
-        width: 100%;
-    }
-    
-    .stButton > button:hover {
-        transform: scale(1.02);
-    }
-    
-    /* Metric styling */
-    .metric-box {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-    }
-    
-    .metric-value {
-        font-size: 2em;
-        font-weight: bold;
-    }
-    
-    .metric-label {
-        font-size: 0.9em;
-        opacity: 0.9;
-        margin-top: 5px;
-    }
-    
-    /* Sidebar */
-    .sidebar-content {
-        background: rgba(255,255,255,0.95);
-        border-radius: 12px;
-        padding: 20px;
-    }
+    .main { background-color: #f8f9fa; }
+    .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
+    .highlight-box { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+    .prediction-card { text-align: center; padding: 20px; border-radius: 10px; color: white; }
     </style>
 """, unsafe_allow_html=True)
-col_header = st.columns([1])
-with col_header[0]:
-    st.markdown('<div class="header-title">💊 AI Drug Discovery</div>', unsafe_allow_html=True)
-    st.markdown('<div class="header-subtitle">Graph Neural Networks for Molecular Property Prediction</div>', unsafe_allow_html=True)
-st.markdown("---")
+@st.cache_resource
+def load_model():
+    checkpoints = glob.glob('checkpoints/*.ckpt')
+    if not checkpoints:
+        return None
+    best_ckpt = checkpoints[-1] 
+    model = DrugDiscoveryModel.load_from_checkpoint(best_ckpt)
+    model.eval()
+    return model
+
+model = load_model()
+col1, col2 = st.columns([1, 4])
+with col1:
+    st.markdown("<div style='font-size: 80px; text-align: center;'>🧬</div>", unsafe_allow_html=True)
+with col2:
+    st.title("AI Drug Discovery Platform")
+    st.markdown("#### Explainable Graph Neural Networks (GATv2) for Solubility Prediction")
+
+if not model:
+    st.error("🚨 No model checkpoint found! Please run `python train_pl.py` first.")
+    st.stop()
 with st.sidebar:
-    st.markdown("### ⚙️ Configuration")
-    st.divider()
+    st.header("🧪 Input Molecule")
+    input_method = st.radio("Choose Input:", ["Type SMILES", "Select Example"])
     
-    st.markdown("#### 🧪 Input Molecule")
-    smiles_input = st.text_input(
-        "Enter SMILES String",
-        value="CC(=O)OC1=CC=CC=C1C(=O)O",
-        help="Standard SMILES notation for chemical compounds"
-    )
+    if input_method == "Select Example":
+        examples = {
+            "Paracetamol (Painkiller)": "CC(=O)Nc1ccc(O)cc1",
+            "Caffeine (Stimulant)": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+            "Aspirin (Anti-inflammatory)": "CC(=O)Oc1ccccc1C(=O)O",
+            "Lipophilic Chain (Low Sol)": "CCCCCCCCCCCCCCCC"
+        }
+        selected = st.selectbox("Choose a molecule:", list(examples.keys()))
+        smiles_input = examples[selected]
+    else:
+        smiles_input = st.text_input("Enter SMILES:", "CC(=O)Nc1ccc(O)cc1")
     
-    st.markdown("#### 📚 Example Molecules")
-    examples = {
-        "Caffeine ☕": "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
-        "Paracetamol 💊": "CC1=C(C=C(C=C1)O)C(=O)O",
-        "Aspirin 🩺": "CC(=O)OC1=CC=CC=C1C(=O)O"
-    }
-    
-    for name, smiles in examples.items():
-        if st.button(f"Load {name}", use_container_width=True):
-            smiles_input = smiles
-            st.rerun()
-    
-    st.divider()
-    st.markdown("### 📖 About")
-    st.info("""
-    **AI Drug Discovery** uses Graph Convolutional Networks (GCN) to predict 
-    molecular solubility from chemical structures.
-    
-    **Dataset:** ESOL (1128 compounds)
-    **Model:** 3-layer GCN with 64 hidden channels
-    """)
-
-tab1, tab2, tab3 = st.tabs([" Analysis", " Model Info", " Training Metrics"])
-
+    st.info(f"**Current Input:**\n`{smiles_input}`")
+    st.markdown("---")
+    st.markdown("### Model Stats")
+    st.markdown("- **Architecture:** GATv2 (Attention)")
+    st.markdown("- **Features:** 24 Deep Chemical Features")
+    st.markdown("- **Training:** Scaffold Split (Rigorous)")
+tab1, tab2, tab3 = st.tabs(["Analysis & XAI", " Batch Prediction", " Training Logs"])
 with tab1:
-    st.markdown('<div class="card"><div class="card-title">🧬 Molecular Structure Visualization</div>', unsafe_allow_html=True)
+    col_viz, col_res = st.columns([1.5, 1])
+    graph_data = smiles_to_graph(smiles_input)
     
-    col_mol = st.columns([2, 1])
-    
-    with col_mol[0]:
-        blk = get_3d_block(smiles_input)
-        if blk:
-            html_str = f"""
-            <div id="viewer" style="width: 100%; height: 500px; position: relative; border-radius: 8px; overflow: hidden;"></div>
-            <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
-            <script>
-                let viewer = $3Dmol.createViewer("viewer", {{backgroundColor: '#f0f0f0'}});
-                let pdbData = `{blk}`;
-                viewer.addModel(pdbData, "mol");
-                viewer.setStyle({{}}, {{stick: {{colorscheme: 'Jmol'}}}});
-                viewer.zoomTo();
-                viewer.render();
-            </script>
-            """
-            st.components.v1.html(html_str, height=520)
-        else:
-            st.error(" Invalid SMILES string. Please check the input.")
-    
-    with col_mol[1]:
-        st.markdown("####  SMILES Info")
-        st.code(smiles_input, language="text")
-        st.markdown("---")
-        st.markdown("####  Tips")
-        st.markdown("""
-        - Valid SMILES notation required
-        - Use standard chemical notation
-        - Check examples in sidebar
-        """)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with tab2:
-    st.markdown('<div class="card"><div class="card-title"> Model Architecture</div>', unsafe_allow_html=True)
-    
-    col_arch = st.columns(3)
-    
-    with col_arch[0]:
-        st.markdown("""
-        <div class="metric-box">
-            <div class="metric-value">3</div>
-            <div class="metric-label">GCN Layers</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_arch[1]:
-        st.markdown("""
-        <div class="metric-box">
-            <div class="metric-value">64</div>
-            <div class="metric-label">Hidden Channels</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col_arch[2]:
-        st.markdown("""
-        <div class="metric-box">
-            <div class="metric-value">1</div>
-            <div class="metric-label">Output (Regression)</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.divider()
-    st.markdown("####  Model Details")
-    st.markdown("""
-    **Graph Convolutional Network (GCN)**
-    - Processes molecular graphs as input
-    - Learns atomic and bond relationships
-    - Outputs Log Solubility (ESOL scale)
-    
-    **Input Features (per atom):**
-    - Atomic number
-    - Degree
-    - Formal charge
-    - Radical electrons
-    - Hybridization state
-    - Aromaticity
-    - Hydrogen count
-    """)
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-
-with tab3:
-    st.markdown('<div class="card"><div class="card-title"> Training Performance</div>', unsafe_allow_html=True)
-    
-    try:
-        df = pd.read_csv("train_history.csv")
-        
-        col_stats = st.columns(3)
-        with col_stats[0]:
-            st.metric("Total Epochs", int(df['epoch'].max()))
-        with col_stats[1]:
-            st.metric("Final Loss", f"{df['loss'].iloc[-1]:.6f}")
-        with col_stats[2]:
-            st.metric("Best Loss", f"{df['loss'].min():.6f}")
-        
-        st.divider()
-        chart = alt.Chart(df).mark_line(point=True, size=3).encode(
-            x=alt.X('epoch:Q', title='Epoch', scale=alt.Scale(zero=False)),
-            y=alt.Y('loss:Q', title='Loss (MSE)', scale=alt.Scale(zero=False)),
-            tooltip=['epoch:Q', alt.Tooltip('loss:Q', format='.6f')]
-        ).properties(
-            title='Training Loss Curve',
-            height=400,
-            width=800
-        ).interactive()
-        
-        st.altair_chart(chart, width='stretch')
-        
-    except FileNotFoundError:
-        st.warning(" No training history found. Run `python train.py` first.")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("---")
-st.markdown('<div class="card"><div class="card-title"> AI Property Prediction</div>', unsafe_allow_html=True)
-
-col_pred = st.columns([1, 2])
-
-with col_pred[0]:
-    if st.button(" Predict Solubility", use_container_width=True):
-        with st.spinner(" Running prediction..."):
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-            model = GNN(hidden_channels=64, num_node_features=9)
+    if graph_data:
+        with torch.no_grad():
+            batch = torch.zeros(graph_data.x.shape[0], dtype=torch.long)
+            pred_log_sol = model(graph_data.x, graph_data.edge_index, batch).item()
             
-            try:
-                if os.path.exists('drug_discovery_model.pt'):
-                    model.load_state_dict(torch.load('drug_discovery_model.pt', map_location=device))
-                else:
-                    st.warning(" Model weights not found. Using untrained network.")
-                
-                model.eval()
-                graph_data = smiles_to_graph(smiles_input)
-                
-                if graph_data:
-                    batch = torch.zeros(graph_data.x.shape[0], dtype=torch.long)
-                    with torch.no_grad():
-                        pred = model(graph_data.x, graph_data.edge_index, batch)
+        sol_category = "High" if pred_log_sol > -2 else "Moderate" if pred_log_sol > -4 else "Low"
+        color = "#2ecc71" if sol_category == "High" else "#f1c40f" if sol_category == "Moderate" else "#e74c3c"
+        
+        with col_res:
+            st.markdown(f"""
+            <div class="prediction-card" style="background: {color};">
+                <h3>Predicted Log Solubility</h3>
+                <h1 style="font-size: 3.5em;">{pred_log_sol:.3f}</h1>
+                <p>Category: <b>{sol_category}</b> (mol/L)</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("###  AI Explanation")
+            if st.button("✨ Explain Prediction (Why?)", type="primary"):
+                with st.spinner("Analyzing atomic contributions..."):
+                    importances = get_molecule_explanation(model, graph_data)
+                    block, style_map = get_colored_3d_block(smiles_input, importances)
                     
-                    val = pred.item()
-                    if val < -4:
-                        category = " Low Solubility (Lipophilic)"
-                        color = "#d32f2f"
-                    elif val > -2:
-                        category = " High Solubility (Hydrophilic)"
-                        color = "#388e3c"
+                    st.session_state['viz_block'] = block
+                    st.session_state['style_map'] = style_map
+                    st.session_state['explained'] = True
+            
+            if st.session_state.get('explained'):
+                st.success("Analysis Complete! Red atoms contribute most to the property.")
+
+        with col_viz:
+            st.markdown("### 🧬 3D Structure")
+            if st.session_state.get('explained'):
+                block = st.session_state['viz_block']
+                style_map = st.session_state['style_map']
+            else:
+                block, _ = get_colored_3d_block(smiles_input)
+                style_map = {}
+
+            if block:
+                style_json = str(style_map).replace("'", '"')
+                
+                html_view = f"""
+                <div id="molviewer" style="width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 8px;"></div>
+                <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+                <script>
+                    let element = document.getElementById("molviewer");
+                    let config = {{ backgroundColor: 'white' }};
+                    let viewer = $3Dmol.createViewer(element, config);
+                    let pdb = `{block}`;
+                    viewer.addModel(pdb, "mol");
+                    
+                    // Default Style
+                    viewer.setStyle({{}}, {{stick: {{radius: 0.2}}}});
+                    
+                    // Apply Atom Colors if provided
+                    let styleMap = {style_json};
+                    if (Object.keys(styleMap).length > 0) {{
+                        for (let idx in styleMap) {{
+                            viewer.setStyle({{serial: parseInt(idx)}}, {{sphere: {{color: styleMap[idx], radius: 0.5}}, stick: {{color: styleMap[idx], radius: 0.2}} }});
+                        }}
+                    }}
+                    
+                    viewer.zoomTo();
+                    viewer.render();
+                </script>
+                """
+                components.html(html_view, height=520)
+with tab2:
+    st.markdown("###  Batch Processing")
+    st.markdown("Upload a CSV file containing a column named `smiles` to process multiple molecules at once.")
+    
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        if 'smiles' in df.columns:
+            st.info(f"Loaded {len(df)} molecules.")
+            
+            if st.button(" Run Batch Prediction"):
+                progress_bar = st.progress(0)
+                preds = []
+                
+                for i, row in df.iterrows():
+                    g_data = smiles_to_graph(row['smiles'])
+                    if g_data:
+                        with torch.no_grad():
+                            batch = torch.zeros(g_data.x.shape[0], dtype=torch.long)
+                            val = model(g_data.x, g_data.edge_index, batch).item()
+                            preds.append(val)
                     else:
-                        category = " Moderate Solubility"
-                        color = "#f57c00"
-                    
-                    st.markdown(f"""
-                    <div style="background: {color}; color: white; padding: 20px; border-radius: 10px; text-align: center;">
-                        <div style="font-size: 2.5em; font-weight: bold;">{val:.4f}</div>
-                        <div style="font-size: 1.2em; margin-top: 10px;">Log Solubility (mol/L)</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    st.markdown(f"**Category:** {category}")
-                else:
-                    st.error(" Could not process molecule graph.")
-            except Exception as e:
-                st.error(f" Prediction Error: {str(e)}")
-                st.info("Ensure 'train.py' has been executed to generate model weights.")
-
-with col_pred[1]:
-    st.markdown("####  Solubility Scale (ESOL)")
-    st.markdown("""
-    | Range | Category | Meaning |
-    |-------|----------|---------|
-    | **< -4** |  Low | Lipophilic, poor water solubility |
-    | **-4 to -2** |  Moderate | Balanced properties |
-    | **> -2** |  High | Hydrophilic, good water solubility |
-    **Use Case:** Drug candidates typically need moderate to high solubility.
-    """)
-
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("---")
-st.markdown("""
-<div style="text-align: center; color: #666; font-size: 0.9em;">
-    <p> AI Drug Discovery Platform | Built with Streamlit, PyTorch & RDKit</p>
-    <p>Dataset: ESOL (Delaney Solubility) | Model: Graph Convolutional Network</p>
-</div>
-""", unsafe_allow_html=True)
+                        preds.append(None)
+                    progress_bar.progress((i + 1) / len(df))
+                
+                df['predicted_log_solubility'] = preds
+                st.success("Processing Complete!")
+                st.dataframe(df.head())
+                
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("⬇ Download Results", csv, "predictions.csv", "text/csv")
+        else:
+            st.error("CSV must contain a 'smiles' column!")
+with tab3:
+    st.markdown("###  MLOps Dashboard")
+    st.markdown("This project uses **Weights & Biases** for experiment tracking.")
+    st.markdown("The chart below shows the training run that generated the current model.")
+    st.info("Since we used MLOps, logs are hosted on the cloud.")
+    st.markdown(f"[ View Training Curves on WandB](https://wandb.ai/home)")
+    st.image("https://wandb.ai/logo.png", width=100)

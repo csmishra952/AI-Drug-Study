@@ -7,3 +7,5 @@ streamlit>=1.28.0
 rdkit
 py3Dmol
 scikit-learn
+pytorch-lightning
+wandb

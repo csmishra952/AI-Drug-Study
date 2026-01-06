@@ -1,58 +1,55 @@
-# AI Drug Discovery using Graph Neural Networks
+# **💊 AI Drug Discovery: Solubility Prediction with GNNs & MLOps**
 
-A machine learning project for predicting molecular solubility using PyTorch Geometric and Graph Convolutional Networks (GCN).
+An end-to-end Machine Learning pipeline for predicting molecular solubility (LogS) using **Graph Attention Networks (GATv2)**. This project demonstrates modern AI engineering practices, including **MLOps** for experiment tracking, **Scaffold Splitting** for rigorous validation, and **Explainable AI (XAI)** to visualize atomic contributions.
 
-## Features
-- **GNN Model**: 3-layer Graph Convolutional Network for molecular property prediction
-- **Interactive Dashboard**: Streamlit UI for real-time solubility predictions
-- **SMILES Support**: Convert chemical notations to molecular graphs
-- **3D Visualization**: py3Dmol integration for molecular structure viewing
+## **Key Features**
 
-## Installation
+* **Advanced Architecture**: Implements **GATv2 (Graph Attention Networks)** to learn dynamic relationships between atoms, outperforming standard GCNs.  
+* **Deep Featurization**: Extracts 24 chemical features per atom (Hybridization, Aromaticity, Chirality) instead of simple atomic numbers.  
+* **Explainable AI (XAI)**: Integrated **GNNExplainer** to visualize which atoms (e.g., Hydrophilic groups) drive the solubility prediction.  
+* **MLOps Pipeline**: Built with **PyTorch Lightning** and **Weights & Biases (WandB)** for automated checkpointing, hyperparameter logging, and experiment tracking.  
+* **Interactive Dashboard**: A Streamlit web app for real-time batch prediction and 3D molecular visualization.
 
-```bash
-git clone https://github.com/csmishra952/AI-Drug-Study.git
-cd AI-Drug-Study
-pip install -r requirements.txt
-```
+## **Tech Stack**
 
-## Usage
+* **Core**: PyTorch, PyTorch Geometric, RDKit  
+* **Engineering**: PyTorch Lightning, WandB  
+* **Visualization**: Py3Dmol, Streamlit, Altair  
+* **Data**: ESOL (Delaney) Solubility Dataset
 
-### Train the Model
-```bash
-python train.py
-```
+## **Installation**
 
-### Run Streamlit Dashboard
-```bash
-streamlit run streamlit_dashboard.py
-```
+git clone \[https://github.com/csmishra952/AI-Drug-Study.git\](https://github.com/csmishra952/AI-Drug-Study.git)  
+cd AI-Drug-Study  
+pip install \-r requirements.txt
 
-The dashboard will open at `http://localhost:8501`
+## **Usage**
 
-## Model Architecture
-- **Input**: Molecular graphs (SMILES strings → atom features + edges)
-- **GCN Layers**: 3 graph convolutional layers (64 hidden channels)
-- **Output**: Log solubility prediction (regression)
+### **1\. Train the Model (MLOps Pipeline)**
 
-## Dataset
-- **ESOL**: Delaney Solubility Dataset (1128 compounds)
-- **Location**: `esol/raw/delaney-processed.csv`
+This script handles featurization, scaffold splitting, and training with WandB logging.
 
-## Project Structure
-```
-├── model.py              # GNN architecture
-├── train.py              # Training script
-├── utils.py              # SMILES processing utilities
-├── streamlit_dashboard.py # Interactive UI
-├── train_history.csv     # Training metrics
-└── esol/                 # Dataset directory
-    ├── raw/
-    └── processed/
-```
+python train\_pl.py
 
-## Technologies
-- PyTorch & PyTorch Geometric
-- RDKit (chemistry)
-- Streamlit (UI)
-- Pandas & Altair (visualization)
+*Artifacts (best models) are automatically saved to checkpoints/.*
+
+### **2\. Run the Dashboard**
+
+Launch the interactive "Command Center" to analyze molecules.
+
+streamlit run streamlit\_dashboard.py
+
+## **MLOps & Performance**
+
+The model is evaluated using **Scaffold Splitting**, a rigorous method that tests the model on structurally distinct molecules to ensure real-world generalization.
+
+* **Training Framework**: PyTorch Lightning  
+* **Experiment Tracking**: Weights & Biases (WandB)  
+* **Early Stopping**: Monitored on Validation Loss
+
+## **Explainability**
+
+The project includes an XAI module that highlights atoms contributing to high or low solubility.
+
+* **Red Atoms**: High contribution to the predicted property.  
+* **Blue/White Atoms**: Neutral or negative contribution.
